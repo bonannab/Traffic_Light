@@ -19,26 +19,18 @@ for f in os.listdir(path):
     if ext.lower() not in valid_images:
         continue
 
-    # imgs.append(Image.open(os.path.join(path,f)))
     imgs.append(cv2.imread(os.path.join(path, f)))
-(h, w, d) = imgs[0].shape
-print("width={}, height={}, depth={}".format(w, h, d))
 
-cv2.imshow('image',imgs[0])
-
-(B, G, R) = imgs[0][100, 50]
-print("R={}, G={}, B={}".format(R, G, B))
 output = imgs[0].copy()
 for i in data[0].get("objects"):
-
     tl = imgs[0][i.get("y"):i.get("y") + i.get("height"),
          i.get("x"):i.get("x") + i.get("width")]
     #cv2.imshow(i.get("track_id"), tl)
 
+    cv2.rectangle(output, (i.get("x"), i.get("y")), (i.get("x") + i.get("width"), i.get("y") + i.get("height")), (0, 0, 255), 2) #doboz
 
-    cv2.rectangle(output, (i.get("x"), i.get("y")), (i.get("x") + i.get("width"), i.get("y") + i.get("height")), (0, 0, 255), 2)
-cv2.imshow("Rectangle", output)
+    cv2.putText(output, str(i.get("class_id")), (i.get("x"), i.get("y")-5),     #lámpaállapot
+                cv2.FONT_HERSHEY_SIMPLEX, 0.2, (0, 255, 0), 1)
+
+cv2.imshow("TrafficLights", output)
 cv2.waitKey(0)
-
-n =2
-print(n)
