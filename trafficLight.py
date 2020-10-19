@@ -99,9 +99,9 @@ def create_feature(rgb_image):
     v_mask[s_mask == 0] = [0]
 
     ## Create feature vector, the brightness in each third of the image after masking
-    v_top = np.sum(v_mask[0:5])
-    v_middle = np.sum(v_mask[5:15])
-    v_bottom = np.sum(v_mask[5:20])
+    v_top = np.sum(v_mask[0:15])
+    v_middle = np.sum(v_mask[7:23])
+    v_bottom = np.sum(v_mask[15:31])
     v_sum = v_top + v_middle + v_bottom
     feature = [v_top / v_sum, v_middle / v_sum, v_bottom / v_sum]
 
