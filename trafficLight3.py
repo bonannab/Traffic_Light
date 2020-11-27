@@ -205,8 +205,8 @@ for j in imgs:
         IMAGE_LIST.append([tl, labell])
     k += 1
 
-    #cv2.imshow("TrafficLights", output)
-    #cv2.waitKey(0)
+    cv2.imshow("TrafficLights", output)
+    cv2.waitKey(0)
 #print(IMAGE_LIST[0][1])
 #cv2.imshow('gh',IMAGE_LIST[0][0])
 #cv2.waitKey(0)

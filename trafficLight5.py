@@ -203,7 +203,6 @@ for j in imgs:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.2, (0, 255, 0), 1)
         IMAGE_LIST.append([tl, labell])
     k += 1
-
     #cv2.imshow("TrafficLights", output)
     #cv2.waitKey(0)
 #print(IMAGE_LIST[0][1])
@@ -590,13 +589,13 @@ def one_hot_encode(label):
         raise ValueError('label: {} is not an acceptable color'.format(label))
     if label == 'off':
         one_hot_encoded[0] = 1
-    if label == 'red':
+    elif label == 'red':
         one_hot_encoded[1] = 1
-    if label == 'yellow':
+    elif label == 'yellow':
         one_hot_encoded[2] = 1
-    if label == 'red-yellow':
+    elif label == 'red-yellow':
         one_hot_encoded[3] = 1
-    if label == 'green':
+    else:
         one_hot_encoded[4] = 1
 
     return one_hot_encoded
@@ -648,7 +647,6 @@ tests.test_one_hot(one_hot_encode)
 def standardize(image_list):
     # Empty image data array
     standard_list = []
-
     # Iterate through all the image-label pairs
     for item in image_list:
         image = item[0]
@@ -662,7 +660,6 @@ def standardize(image_list):
 
         # Append the image, and it's one hot encoded label to the full, processed list of image data
         standard_list.append((standardized_im, one_hot_label))
-
     return standard_list
 
 
@@ -1372,6 +1369,7 @@ random.shuffle(STANDARDIZED_TEST_LIST)
 def get_misclassified_images(test_images):
     # Track misclassified images by placing them into a list
     misclassified_images_labels = []
+    predicted_labels = []
 
     # Iterate through all the test images
     # Classify each image and compare to the true label
@@ -1427,6 +1425,7 @@ def get_misclassified_images(test_images):
         else:
             predicted_label = [0, 0, 0, 0, 1]
 
+        predicted_labels.append((predicted_label, true_label))
         # Compare true and predicted labels
         if (predicted_label != true_label):
             # If these labels are not equal, the image has been misclassified
@@ -1436,14 +1435,15 @@ def get_misclassified_images(test_images):
         ##############VÉGE#########################################################
 
     # Return the list of misclassified [image, predicted_label, true_label] values
-    return misclassified_images_labels
+    return misclassified_images_labels, predicted_labels
 
 
 # Find all misclassified images in a given test set
-MISCLASSIFIED = get_misclassified_images(STANDARDIZED_TEST_LIST)
+MISCLASSIFIED = get_misclassified_images(STANDARDIZED_LIST)[0]
+PREDICTED = get_misclassified_images(STANDARDIZED_LIST)[1]
 
 # Accuracy calculations
-total = len(STANDARDIZED_TEST_LIST)
+total = len(STANDARDIZED_LIST)
 num_correct = total - len(MISCLASSIFIED)
 accuracy = num_correct / total
 
@@ -1451,7 +1451,7 @@ print('Accuracy: ' + str(accuracy))
 print("Number of misclassified images = " + str(len(MISCLASSIFIED)) + ' out of ' + str(total))
 print('predicted_label -- true_label')
 
-for i in MISCLASSIFIED: ###############################x
+for i in MISCLASSIFIED: ###############################
     print(str(i[1]) + '--' + str(i[2]))
     print(str(feature_value(i[0])))
     plt.imshow(i[0])
@@ -1480,6 +1480,80 @@ print('guess: ', encoder)
 print('actual: ', test_label)
 plt.imshow(test_im)
 plt.show()'''
+
+k = 0
+l = 0
+confusion_matrix = [[0, 0, 0, 0, 0],
+     [0, 0, 0, 0, 0],
+     [0, 0, 0, 0, 0],
+     [0, 0, 0, 0, 0],
+     [0, 0, 0, 0, 0]]
+for j in imgs:
+    output = j.copy()
+    output = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
+    for i in data[k].get("objects"):
+        cv2.rectangle(output, (i.get("x"), i.get("y")), (i.get("x") + i.get("width"), i.get("y") + i.get("height")), (0, 0, 255), 2) #doboz
+        label = str(i.get("class_id"))
+
+        if label[4] == '0':
+            label = 'off'
+        elif label[4] == '1':
+            label = 'red'
+        elif label[4] == '2':
+            label = 'yellow'
+        elif label[4] == '3':
+            label = 'red-yellow'
+        else:
+            label = 'green'
+
+        if PREDICTED[l][0] == [1, 0, 0, 0, 0]:
+            predicted_label = 'off'
+        elif PREDICTED[l][0] == [0, 1, 0, 0, 0]:
+            predicted_label = 'red'
+        elif PREDICTED[l][0] == [0, 0, 1, 0, 0]:
+            predicted_label = 'yellow'
+        elif PREDICTED[l][0] == [0, 0, 0, 1, 0]:
+            predicted_label = 'red-yellow'
+        else:
+            predicted_label = 'green'
+
+        if PREDICTED[l][1] == [1, 0, 0, 0, 0]:
+            true_label = 'off'
+        elif PREDICTED[l][1] == [0, 1, 0, 0, 0]:
+            true_label = 'red'
+        elif PREDICTED[l][1] == [0, 0, 1, 0, 0]:
+            true_label = 'yellow'
+        elif PREDICTED[l][1] == [0, 0, 0, 1, 0]:
+            true_label = 'red-yellow'
+        else:
+            true_label = 'green'
+
+        '''cv2.putText(output, label, (i.get("x"), i.get("y") - 30),  # lámpaállapot
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)'''
+        if PREDICTED[l][0] != PREDICTED[l][1]:
+            cv2.putText(output, true_label, (i.get("x"), i.get("y")-5),     #lámpaállapot
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            cv2.putText(output, predicted_label, (i.get("x"), i.get("y") - 15),  # jósolt
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+            m = 0
+            while(PREDICTED[l][0][m] != 1):
+                m += 1
+            n = 0
+            while (PREDICTED[l][1][n] != 1):
+                n += 1
+            confusion_matrix[m][n] = confusion_matrix[m][n] + 1
+        else:
+            cv2.putText(output, true_label, (i.get("x"), i.get("y") - 5),  # lámpaállapot
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            cv2.putText(output, predicted_label, (i.get("x"), i.get("y") - 15),  # lámpaállapot
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        l += 1
+    cv2.imwrite("../estimated/image"+str(k)+".tiff", output)
+    cv2.waitKey(0)
+    k += 1
+print('off, red, yellow, red-yellow, green')
+for i in confusion_matrix:
+    print(*i)
 
 # ---
 # <a id='question2'></a>
