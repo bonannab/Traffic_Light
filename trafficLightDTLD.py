@@ -1,6 +1,7 @@
 # # Traffic Light Classifier
-
+# track_id
 import json
+import logging
 
 import random
 import numpy as np
@@ -8,47 +9,66 @@ import matplotlib.pyplot as plt
 import cv2
 import os, os.path
 import math
+import numpy as np
 import pandas as pd
 
+import yaml
+
+with open('../DTLD_Labels/Bochum_all_jav.yml') as f:
+    data = yaml.load(f, Loader=yaml.FullLoader)
 imgs = []
-data = []
-valid_images = [".png"]
-valid_json = [".json"]
-#folder = '../frames/'
-#folder = '../frames/frames/20201123-104646-00.02.50-00.03.30@Solar/'       #rossz 117-es képre
-# folder = '../frames/frames/20201123-104646-00.03.45-00.03.55@Solar/'
-# folder = '../frames/frames/20201123-104646-00.04.05-00.04.15@Solar/'
-# folder = '../frames/frames/20201123-104646-00.04.40-00.04.52@Solar/'
-folder = '../frames/frames/jav/'            #rossz 22-es képre
-# folder = '../frames/frames/20201123-104646-00.06.22-00.06.36@Solar/'
+valid_images = [".tiff"]
+folder = '../scratch/fs2/DTLD_final/Bochum/Bochum1/2015-04-21_17-09-21/2'
+
 p = 0
 for path, subdirs, files in os.walk(folder):
     p += 1
     for f in files:
-        ext = os.path.splitext(f)[1]
-        if ext.lower() in valid_images:
-            imgs.append(cv2.imread(os.path.join(path, f))[..., ::-1])
-        if ext.lower() in valid_json:
-            with open(os.path.join(path, f)) as json_file:
-                data.append(json.load(json_file))
+        if os.path.isfile(os.path.join(path, f)):
+            # Load image from file path, do debayering and shift
+            img = cv2.imread(os.path.join(path, f), cv2.IMREAD_UNCHANGED)
+            # img = cv2.cvtColor(img, cv2.COLOR_BAYER_GB2BGR) # 27 out of 215
+            img = cv2.cvtColor(img, cv2.COLOR_BAYER_GB2RGB)  ####################26 out of 215
+            # Images are saved in 12 bit raw -> shift 4 bits
+            img = np.right_shift(img, 4)
+            img = img.astype(np.uint8)
+            imgs.append(img)
+        else:
+            logging.exception(
+                "Image {} not found".format("../scratch/fs2/DTLD_final/Bochum/Bochum1/2015-04-21_17-09-21/2"))
 
 print('Number of pictures: ', len(imgs))
 
 # boxing
+tl_image_list = []
+tl_label_list = []
 k = 0
 IMAGE_LIST = []
 for j in imgs:
     output = j.copy()
-    for i in data[k].get("CapturedObjects"):
-        if (i.get("ActorName").startswith('TRAFFIC_LIGHT') is True) and (i.get("Score") > 0.3):
-            tl = j[int(i.get("BoundingBox2D Y1")):int(i.get("BoundingBox2D Y2")),
-                 int(i.get("BoundingBox2D X1")):int(i.get("BoundingBox2D X2"))]
+    for i in data[k].get("objects"):
+        tl = j[i.get("y"):i.get("y") + i.get("height"), i.get("x"):i.get("x") + i.get("width")]
 
-            cv2.rectangle(output, (
-                int(i.get("BoundingBox2D X1")), int(i.get("BoundingBox2D Y1")), int(i.get("BoundingBox2D X2")),
-                int(i.get("BoundingBox2D Y2"))), (0, 0, 255), 2)  # box
+        cv2.rectangle(output, (i.get("x"), i.get("y")), (i.get("x") + i.get("width"), i.get("y") + i.get("height")),
+                      (0, 0, 255), 2)  # doboz
+        label = str(i.get("class_id"))
+        if label[4] == '0':
             labell = 'off'
-            IMAGE_LIST.append([tl, labell])
+        elif label[4] == '1':
+            labell = 'red'
+        elif label[4] == '2':
+            labell = 'yellow'
+        elif label[4] == '3':
+            labell = 'red-yellow'
+        else:
+            labell = 'green'
+        tl_label_list.append(labell)
+
+        # print(one_hot_encode_dtld(label[4]))
+
+        cv2.putText(output, str(i.get("class_id")), (i.get("x"), i.get("y") - 5),  # lámpaállapot
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.2, (0, 255, 0), 1)
+        IMAGE_LIST.append([tl, labell])
     k += 1
 
 print('Number of traffic_light: ', len(IMAGE_LIST))
@@ -262,6 +282,7 @@ def one_hot_encode(label):
 
     return one_hot_encoded
 
+
 def re_one_hot_encode(label):
     one_hot_encoded = 'off'
     # check whether color is red green of yellow
@@ -278,25 +299,6 @@ def re_one_hot_encode(label):
         one_hot_encoded = 'red-yellow'
     else:
         one_hot_encoded = 'green'
-
-    return one_hot_encoded
-
-def re_re_one_hot_encode(label):
-    one_hot_encoded = 0
-    # check whether color is red green of yellow
-    acceptable_colors = tuple([[1, 0, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 0, 0], [0, 0, 0, 1, 0], [0, 0, 0, 0, 1]])
-    if (not label in acceptable_colors):
-        raise ValueError('label: {} is not an acceptable color'.format(label))
-    if label == [1, 0, 0, 0, 0]:
-        one_hot_encoded = 0
-    elif label == [0, 1, 0, 0, 0]:
-        one_hot_encoded = 1
-    elif label == [0, 0, 1, 0, 0]:
-        one_hot_encoded = 2
-    elif label == [0, 0, 0, 1, 0]:
-        one_hot_encoded = 3
-    else:
-        one_hot_encoded = 4
 
     return one_hot_encoded
 
@@ -589,6 +591,8 @@ def get_predicted_images(test_images):
     # Iterate through all the test images
     # Classify each image and compare to the true label
     for image in test_images:
+        # plt.imshow(image[0])
+        # plt.show()
         # Get true data
         im = image[0]
         true_label = image[1]
@@ -620,6 +624,7 @@ def get_predicted_images(test_images):
         p = math.fabs(green - red)
 
         summ = red + yellow + green
+        # print('Össz intenzitás: ', summ)
         prob_off = (1 - (u / summ)) * (1 - (o / summ)) * (1 - (p / summ))
         prob_red = red / summ
         prob_yellow = yellow / summ
@@ -632,6 +637,7 @@ def get_predicted_images(test_images):
         obs_prob = [prob_off / summa, prob_red / summa, prob_yellow / summa, prob_redyellow / summa, prob_green / summa]
         obs_probability.append(
             [prob_off / summa, prob_red / summa, prob_yellow / summa, prob_redyellow / summa, prob_green / summa])
+        # print('Valószínűség:', obs_prob)
 
         # if u < 500 and o < 500 and p < 500:
         if max(obs_prob) == prob_off / summa:
@@ -651,73 +657,18 @@ def get_predicted_images(test_images):
         else:
             predicted_label = [0, 0, 0, 0, 1]  # green
 
-        predicted_labels.append(predicted_label)
+        # print('Jósolt:', predicted_label)
+        predicted_labels.append((predicted_label, true_label))
+        # print(obs_prob)
 
     return predicted_labels, obs_probability
-
-def forward(V, a, b, initial_distribution):
-    alpha = np.zeros((V.shape[0], a.shape[0]))
-    alpha[0, :] = initial_distribution * b[:, V[0]]
-
-    for t in range(1, V.shape[0]):
-        for j in range(a.shape[0]):
-            # Matrix Computation Steps
-            #                  ((1x2) . (1x2))      *     (1)
-            #                        (1)            *     (1)
-            alpha[t, j] = alpha[t - 1].dot(a[:, j]) * b[j, V[t]]
-
-    return alpha
-
-
-def backward(V, a, b):
-    beta = np.zeros((V.shape[0], a.shape[0]))
-
-    # setting beta(T) = 1
-    beta[V.shape[0] - 1] = np.ones((a.shape[0]))
-
-    # Loop in backward way from T-1 to
-    # Due to python indexing the actual loop will be T-2 to 0
-    for t in range(V.shape[0] - 2, -1, -1):
-        for j in range(a.shape[0]):
-            beta[t, j] = (beta[t + 1] * b[:, V[t + 1]]).dot(a[j, :])
-
-    return beta
-
-
-def baum_welch(V, a, b, initial_distribution, n_iter=50):
-    M = a.shape[0]
-    T = len(V)
-
-    for n in range(n_iter):
-        alpha = forward(V, a, b, initial_distribution)
-        beta = backward(V, a, b)
-
-        xi = np.zeros((M, M, T - 1))
-        for t in range(T - 1):
-            denominator = np.dot(np.dot(alpha[t, :].T, a) * b[:, V[t + 1]].T, beta[t + 1, :])
-            for i in range(M):
-                numerator = alpha[t, i] * a[i, :] * b[:, V[t + 1]].T * beta[t + 1, :].T
-                xi[i, :, t] = numerator / denominator
-
-        gamma = np.sum(xi, axis=1)
-        a = np.sum(xi, 2) / np.sum(gamma, axis=1).reshape((-1, 1))
-
-        # Add additional T'th element in gamma
-        gamma = np.hstack((gamma, np.sum(xi[:, :, T - 2], axis=0).reshape((-1, 1))))
-
-        K = b.shape[1]
-        denominator = np.sum(gamma, axis=1)
-        for l in range(K):
-            b[:, l] = np.sum(gamma[:, V == l], axis=1)
-
-        b = np.divide(b, denominator.reshape((-1, 1)))
-        #print(a)
-    return a, b
 
 
 def viterbi(pi, a, obs_prob):
     nStates = np.shape(a)[0]
+    # T = np.shape(obs_prob[1])[0]
     T = len(obs_prob)
+    # T = np.shape(obs_prob)[:0]
 
     # init blank path
     path = np.zeros(T)
@@ -727,86 +678,135 @@ def viterbi(pi, a, obs_prob):
     phi = np.zeros((nStates, T))
 
     # init delta and phi
-    delta[:, 0] = pi * obs_prob[0, :]
+    delta[:, 0] = pi * obs_prob[0, :]  # b[:, obs[0]]
+    # delta[:, 0] = pi * b[:, obs_prob[:,0]]
     phi[:, 0] = 0
 
+    # print('\nStart Walk Forward\n')
     # the forward algorithm extension
     for t in range(1, T):
         for s in range(nStates):
-            delta[s, t] = np.max(delta[:, t - 1] * a[:, s]) * obs_prob[t, s]
+            delta[s, t] = np.max(delta[:, t - 1] * a[:, s]) * obs_prob[t, s]  # * b[s, obs[t]]
             phi[s, t] = np.argmax(delta[:, t - 1] * a[:, s])
+            # print('s={s} and t={t}: phi[{s}, {t}] = {phi} ---{delta}'.format(s=s, t=t, phi=phi[s, t], delta=delta[s,t]))
 
     # find optimal path
+    # print('-' * 50)
+    # print('Start Backtrace\n')
     path[T - 1] = np.argmax(delta[:, T - 1])
+    # p('init path\n    t={} path[{}-1]={}\n'.format(T-1, T, path[T-1]))
     for t in range(T - 2, -1, -1):
         path[t] = phi[int(path[t + 1]), [t + 1]]
+        # p(' '*4 + 't={t}, path[{t}+1]={path}, [{t}+1]={i}'.format(t=t, path=path[t+1], i=[t+1]))
+        # print('path[{}] = {}'.format(t, path[t]))
 
     return path, delta, phi
-
 
 
 # Find all misclassified images in a given test set
 PREDICTED = get_predicted_images(STANDARDIZED_LIST)[0]
 PROBS = get_predicted_images(STANDARDIZED_LIST)[1]
 
-# boxing
 k = 0
-IMAGE_LIST = []
 l = 0
-numred = 0
-numgreen = 0
-numyellow = 0
-numredyell = 0
-numoff = 0
+confusion_matrix = [[0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0]]
+
 traffic_light_names = []
 traffic_obs_prob = []
+w = 0
+total = 0
+index = []
 for j in imgs:
     output = j.copy()
-    for i in data[k].get("CapturedObjects"):
-        if (i.get("ActorName").startswith('TRAFFIC_LIGHT') is True) and (i.get("Score") > 0.33):
+    output = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
+    for i in data[k].get("objects"):
+        cv2.rectangle(output, (i.get("x"), i.get("y")), (i.get("x") + i.get("width"), i.get("y") + i.get("height")),
+                      (0, 0, 255), 2)  # doboz
+        label = str(i.get("class_id"))
 
-            cv2.rectangle(output, (int(i.get("BoundingBox2D X1")), int(i.get("BoundingBox2D Y1"))),
-                          (int(i.get("BoundingBox2D X2")), int(i.get("BoundingBox2D Y2"))), (0, 0, 255), 2)  # box
+        if label[4] == '0':
+            label = 'off'
+        elif label[4] == '1':
+            label = 'red'
+        elif label[4] == '2':
+            label = 'yellow'
+        elif label[4] == '3':
+            label = 'red-yellow'
+        else:
+            label = 'green'
 
-            if PREDICTED[l] == [1, 0, 0, 0, 0]:
-                predicted_label = 'off'
-                numoff += 1
-            elif PREDICTED[l] == [0, 1, 0, 0, 0]:
-                predicted_label = 'red'
-                numred += 1
-            elif PREDICTED[l] == [0, 0, 1, 0, 0]:
-                predicted_label = 'yellow'
-                numyellow += 1
-            elif PREDICTED[l] == [0, 0, 0, 1, 0]:
-                predicted_label = 'red-yellow'
-                numredyell += 1
-            else:
-                predicted_label = 'green'
-                numgreen += 1
+        if PREDICTED[l][0] == [1, 0, 0, 0, 0]:
+            predicted_label = 'off'
+        elif PREDICTED[l][0] == [0, 1, 0, 0, 0]:
+            predicted_label = 'red'
+        elif PREDICTED[l][0] == [0, 0, 1, 0, 0]:
+            predicted_label = 'yellow'
+        elif PREDICTED[l][0] == [0, 0, 0, 1, 0]:
+            predicted_label = 'red-yellow'
+        else:
+            predicted_label = 'green'
 
-            cv2.putText(output, predicted_label, (i.get("BoundingBox2D X1"), i.get("BoundingBox2D Y1") - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.2, (0, 255, 0), 1)
+        if PREDICTED[l][1] == [1, 0, 0, 0, 0]:
+            true_label = 'off'
+        elif PREDICTED[l][1] == [0, 1, 0, 0, 0]:
+            true_label = 'red'
+        elif PREDICTED[l][1] == [0, 0, 1, 0, 0]:
+            true_label = 'yellow'
+        elif PREDICTED[l][1] == [0, 0, 0, 1, 0]:
+            true_label = 'red-yellow'
+        else:
+            true_label = 'green'
 
-            cv2.putText(output, i.get("ActorName"), (i.get("BoundingBox2D X1"), i.get("BoundingBox2D Y1") - 15),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.2, (0, 0, 255), 1)
-            l += 1
+        '''cv2.putText(output, label, (i.get("x"), i.get("y") - 30),  # lámpaállapot
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)'''
+        if PREDICTED[l][0] != PREDICTED[l][1]:
+            cv2.putText(output, true_label, (i.get("x"), i.get("y") - 5),  # lámpaállapot
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            cv2.putText(output, predicted_label, (i.get("x"), i.get("y") - 15),  # jósolt
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+            w += 1
+        else:
+            cv2.putText(output, true_label, (i.get("x"), i.get("y") - 5),  # lámpaállapot
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            cv2.putText(output, predicted_label, (i.get("x"), i.get("y") - 15),  # lámpaállapot
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        m = 0
+        while PREDICTED[l][0][m] != 1:
+            m += 1
+        n = 0
+        while PREDICTED[l][1][n] != 1:
+            n += 1
+        confusion_matrix[m][n] = confusion_matrix[m][n] + 1
 
-            volt = False
-            o = 0
-            for m in traffic_light_names:
-                if i.get("ActorName") == m:
-                    volt = True
-                    traffic_obs_prob.insert(o, PROBS[l])
-                    break
-                o += 1
+        volt = False
+        o = 0
+        for z in traffic_light_names:
+            if i.get("track_id") == z:
+                volt = True
+            # traffic_obs_prob.insert(o, PROBS[l])
+            # break
+            # o += 1
 
-            if volt == False:
-                traffic_light_names.append(i.get("ActorName"))
+        if volt == False:
+            traffic_light_names.append(i.get("track_id"))
+
+        l += 1
+        total += 1
+
+    # cv2.imwrite("../estimated/image"+str(k)+".tiff", output)
+    # cv2.waitKey(0)
     k += 1
 
-o = 0
+print('off, red, yellow, red-yellow, green')
+for i in confusion_matrix:
+    print(*i)
 
 o = 0
+fail = 0
 all_true = []
 all_pred = []
 all_mpred = []
@@ -815,150 +815,184 @@ f_true = []
 f_pred = []
 f_mpred = []
 f_obs = []
-indexx1 = []
-indexx2 = []
+indexx = []
 for m in traffic_light_names:
     k = 0
     l = 0
     traffic_obs_prob_m = []
     traffic_obs_prob_pred = []
-    index1 = []
-    index2 = []
+    traffic_obs_prob_true = []
+    index = []
     for j in imgs:
-        for i in data[k].get("CapturedObjects"):
-            if (i.get("ActorName").startswith('TRAFFIC_LIGHT') is True) and (i.get("Score") > 0.33):
-                if i.get("ActorName") == m:
-                    traffic_obs_prob_m.append(PROBS[l])
-                    traffic_obs_prob_pred.append(PREDICTED[l])
-                    index1.append(i.get("ObjectId"))
-                    index2.append(i.get("BoundingBox2D X1"))
-                l += 1
+        for i in data[k].get("objects"):
+            if i.get("track_id") == m:
+                traffic_obs_prob_m.append(PROBS[l])
+                traffic_obs_prob_pred.append(PREDICTED[l][0])
+                traffic_obs_prob_true.append(PREDICTED[l][1])
+                index.append(i.get("unique_id"))
+            l += 1
         k += 1
     print(m)
-    print('Megfigyelési valószínűségek: ', traffic_obs_prob_m)
+    print(traffic_obs_prob_m)
+    # print(traffic_obs_prob_pred)
     traffic_obs_prob.append(traffic_obs_prob_m)
 
     # markov
     hidden_states = ['off', 'red', 'yellow', 'red-yellow', 'green']
     pi = [0.2, 0.2, 0.2, 0.2, 0.2]
     state_space = pd.Series(pi, index=hidden_states, name='states')
+    # print(state_space)
+    # print('\n', state_space.sum())
 
     # hidden_state transition matrix (valamilyen állapotból melyikbe mehet át, kb. egyenletes eloszlás mivel nem tudunk semmit)
     a_df = pd.DataFrame(columns=hidden_states, index=hidden_states)
     a_df.loc[hidden_states[0]] = [0.2, 0.2, 0.2, 0.2, 0.2]
-    a_df.loc[hidden_states[1]] = [0.3, 0.3, 0.05, 0.3, 0.05]
-    a_df.loc[hidden_states[2]] = [0.3, 0.3, 0.3, 0.05, 0.05]
-    a_df.loc[hidden_states[3]] = [0.3, 0.05, 0.05, 0.3, 0.3]
-    a_df.loc[hidden_states[4]] = [0.3, 0.05, 0.3, 0.05, 0.3]
+    a_df.loc[hidden_states[1]] = [0.3, 0.35, 0, 0.35, 0]
+    a_df.loc[hidden_states[2]] = [0.3, 0.35, 0.35, 0, 0]
+    a_df.loc[hidden_states[3]] = [0.3, 0, 0, 0.35, 0.35]
+    a_df.loc[hidden_states[4]] = [0.3, 0, 0.35, 0, 0.35]
+
+    # print(a_df)
 
     a = a_df.values
-    b = a
+    # print('\n', a, a.shape, '\n')
+    # print(a_df.sum(axis=1))
+
     observable_states = ['off', 'red', 'yellow', 'red-yellow', 'green']
+
+    b_df = pd.DataFrame(columns=observable_states, index=hidden_states)
+
     # observations are encoded numerically
     obs_map = {'off': 0, 'red': 1, 'yellow': 2, 'red-yellow': 3, 'green': 4}
-
+    # obs = np.array([0,0,1,1,1,3,3,3,4,4,2,4,4,4,4,1,2,2,2,4,1])
+    '''obs_prob = [[0.3,0.5,0.2,0.2,0.1,0.1,0.1,0.1,0.2,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+                [0.2,0.2,0.4,0.5,0.6,0.2,0.2,0.1,0.1,0.1,0.2,0.2,0.1,0.1,0.1,0.3,0.2,0.2,0.1,0.2,0.4],
+                [0.2,0.1,0.2,0.1,0.1,0.2,0.2,0.2,0.2,0.2,0.3,0.1,0.1,0.1,0.1,0.2,0.4,0.5,0.6,0.2,0.2],
+                [0.1,0.1,0.1,0.1,0.1,0.3,0.4,0.5,0.2,0.2,0.2,0.2,0.2,0.1,0.1,0.2,0.2,0.1,0.1,0.2,0.2],
+                [0.2,0.1,0.1,0.1,0.1,0.2,0.1,0.1,0.3,0.4,0.2,0.4,0.5,0.6,0.6,0.2,0.1,0.1,0.1,0.3,0.1]]'''
     obs_prob = np.array(traffic_obs_prob_m)
     obs_seq = np.array(traffic_obs_prob_pred)
-    if len(traffic_obs_prob_pred) > 1:
-        obss = np.array([re_re_one_hot_encode(v) for v in traffic_obs_prob_pred])
-        inv_obs_map = dict((v, k) for k, v in obs_map.items())
+    seq_true = traffic_obs_prob_true
 
-        a, b = baum_welch(obss, a, b, pi, n_iter=50)
+    inv_obs_map = dict((v, k) for k, v in obs_map.items())
 
+    # path, delta, phi = viterbi(pi, a, b, obs, obs_prob)
     path, delta, phi = viterbi(pi, a, obs_prob)
+    # print('\nsingle best state path: \n', path)
+    # print('delta:\n', delta)
+    # print('phi:\n', phi)
 
     state_map = {0: [1, 0, 0, 0, 0], 1: [0, 1, 0, 0, 0], 2: [0, 0, 1, 0, 0], 3: [0, 0, 0, 1, 0], 4: [0, 0, 0, 0, 1]}
     state_path = [state_map[v] for v in path]
     s_mpred = [re_one_hot_encode(v) for v in state_path]
+    s_true = [re_one_hot_encode(v) for v in seq_true]
     s_pred = [re_one_hot_encode(v) for v in traffic_obs_prob_pred]
+    all_true.append(s_true)
     all_pred.append(s_pred)
     all_mpred.append(state_path)
     print('Jósolt, szekvencia: ', s_pred)
+    print('Valós, szekvencia : ', s_true)
     print('M javított szekven: ', s_mpred)
 
+    for x in s_true:
+        f_true.append(x)
     for x in s_pred:
         f_pred.append(x)
     for x in s_mpred:
         f_mpred.append(x)
-    for x in index1:
-        indexx1.append(x)
-    for x in index2:
-        indexx2.append(x)
+    for x in index:
+        indexx.append(x)
     for x in traffic_obs_prob_m:
         f_obs.append(x)
+
+    for i in range(len(seq_true)):
+        if seq_true[i] != state_path[i]:
+            fail += 1
+
+# (pd.DataFrame()
+# .assign(Observation=obs_seq)
+# .assign(Best_Path=state_path))
 
 o += 1
 
 k = 0
 l = 0
-
 for j in imgs:
     output = j.copy()
-    for i in data[k].get("CapturedObjects"):
-        if (i.get("ActorName").startswith('TRAFFIC_LIGHT') is True) and (i.get("Score") > 0.33):
-            h = 0
-            label = 'nincs'
-            for x in indexx1:
-                if i.get("ObjectId") == x and i.get("BoundingBox2D X1") == indexx2[h]:
-                    cv2.rectangle(output, (int(i.get("BoundingBox2D X1")), int(i.get("BoundingBox2D Y1"))),
-                                  (int(i.get("BoundingBox2D X2")), int(i.get("BoundingBox2D Y2"))), (0, 0, 255),
-                                  2)  # box
+    output = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
+    for i in data[k].get("objects"):
+        h = 0
+        label = 'nincs'
+        for x in indexx:
+            if i.get("unique_id") == x:
+                cv2.rectangle(output, (i.get("x"), i.get("y")), (i.get("x") + i.get("width"), i.get("y") + i.get("height")),
+                              (0, 0, 255), 2)  # doboz
+                cv2.rectangle(output, (i.get("x")+i.get("width")+int(50*f_obs[h][0]), i.get("y")),
+                              (i.get("x") + i.get("width")+5, i.get("y") + 5),
+                              (0, 0, 0), 2)  # off-doboz
 
-                    cv2.rectangle(output, (int(i.get("BoundingBox2D X2"))+int(50*f_obs[h][0]), int(i.get("BoundingBox2D Y1"))),
-                                  ((int(i.get("BoundingBox2D X2"))+5, int(i.get("BoundingBox2D Y1")) + 5)),
-                                  (0, 0, 0), 2)  # off-doboz
+                cv2.putText(output, str(round(f_obs[h][0],2)), (i.get("x")+65, i.get("y")),  # off
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.25, (0, 0, 0), 1)
 
-                    cv2.putText(output, str(round(f_obs[h][0],2)), (int(i.get("BoundingBox2D X1"))+65, int(i.get("BoundingBox2D Y1"))),  # off
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.25, (0, 0, 0), 1)
+                cv2.rectangle(output, (i.get("x") + i.get("width") + int(50*f_obs[h][1]), i.get("y")+10),
+                              (i.get("x") + i.get("width")+5, i.get("y") + 15),
+                              (0, 0, 255), 2)  # red-doboz
 
-                    cv2.rectangle(output, (int(i.get("BoundingBox2D X2"))+ int(50*f_obs[h][1]), int(i.get("BoundingBox2D Y1"))+10),
-                                  (i.get("BoundingBox2D X2")+5, int(i.get("BoundingBox2D Y1")) + 15),
-                                  (0, 0, 255), 2)  # red-doboz
+                cv2.putText(output, str(round(f_obs[h][1],2)), (i.get("x") + 65, i.get("y")+10),  # red
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.25, (0, 0, 255), 1)
 
-                    cv2.putText(output, str(round(f_obs[h][1],2)), (int(i.get("BoundingBox2D X1")) + 65, int(i.get("BoundingBox2D Y1"))+10),  # red
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.25, (0, 0, 255), 1)
+                cv2.rectangle(output, (i.get("x") + i.get("width") + int(50*f_obs[h][2]), i.get("y") + 20),
+                              (i.get("x") + i.get("width")+5, i.get("y") + 25),
+                              (0, 255, 255), 2)  # yellow-doboz
 
-                    cv2.rectangle(output, (int(i.get("BoundingBox2D X2")) + int(50*f_obs[h][2]), int(i.get("BoundingBox2D Y1")) + 20),
-                                  (int(i.get("BoundingBox2D X2"))+5, int(i.get("BoundingBox2D Y1")) + 25),
-                                  (0, 255, 255), 2)  # yellow-doboz
+                cv2.putText(output, str(round(f_obs[h][2],2)), (i.get("x") + 65, i.get("y") + 20),  # yellow
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.25, (0, 255, 255), 1)
 
-                    cv2.putText(output, str(round(f_obs[h][2],2)), (int(i.get("BoundingBox2D X1")) + 65, int(i.get("BoundingBox2D Y1")) + 20),  # yellow
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.25, (0, 255, 255), 1)
+                cv2.rectangle(output, (i.get("x") + i.get("width") + int(50*f_obs[h][3]), i.get("y") + 30),
+                              (i.get("x") + i.get("width")+5, i.get("y") + 35),
+                              (0, 140, 255), 2)  # red-yellow-doboz
 
-                    cv2.rectangle(output, (int(i.get("BoundingBox2D X2")) + int(50*f_obs[h][3]), int(i.get("BoundingBox2D Y1")) + 30),
-                                  (int(i.get("BoundingBox2D X2"))+5, int(i.get("BoundingBox2D Y1")) + 35),
-                                  (0, 140, 255), 2)  # red-yellow-doboz
+                cv2.putText(output, str(round(f_obs[h][3],2)), (i.get("x") + 65, i.get("y") + 30),  # red-yellow
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.25, (0, 140, 255), 1)
 
-                    cv2.putText(output, str(round(f_obs[h][3],2)), (int(i.get("BoundingBox2D X1")) + 65, int(i.get("BoundingBox2D Y1")) + 30),  # red-yellow
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.25, (0, 140, 255), 1)
+                cv2.rectangle(output, (i.get("x") + i.get("width") + int(50*f_obs[h][4]), i.get("y") + 40),
+                              (i.get("x") + i.get("width")+5, i.get("y") + 45),
+                              (0, 255, 0), 2)  # green-doboz
 
-                    cv2.rectangle(output, (int(i.get("BoundingBox2D X2")) + int(50*f_obs[h][4]), i.get("BoundingBox2D Y1") + 40),
-                                  (int(i.get("BoundingBox2D X2"))+5, int(i.get("BoundingBox2D Y1")) + 45),
-                                  (0, 255, 0), 2)  # green-doboz
+                cv2.putText(output, str(round(f_obs[h][4],2)), (i.get("x") + 65, i.get("y") + 40),  # green
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.25, (0, 255, 0), 1)
 
-                    cv2.putText(output, str(round(f_obs[h][4],2)), (int(i.get("BoundingBox2D X1")) + 65, int(i.get("BoundingBox2D Y1")) + 40),  # green
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.25, (0, 255, 0), 1)
 
-                    if f_pred[h] != f_mpred[h]:
-                        cv2.putText(output, str('becs:'+f_pred[h]), (int(i.get("BoundingBox2D X1")), int(i.get("BoundingBox2D Y1")) - 20),  # jósolt jó
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-                    else:
-                        cv2.putText(output, str('becs:' + f_pred[h]),
-                                    (int(i.get("BoundingBox2D X1")), int(i.get("BoundingBox2D Y1")) - 20),  # jósolt jó
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-
-                    cv2.putText(output, str('jav:'+f_mpred[h]), (int(i.get("BoundingBox2D X1")), int(i.get("BoundingBox2D Y1")) - 35),  # javított jó
+                label = str(i.get("class_id"))
+                cv2.putText(output, str('val:'+ f_true[h]), (i.get("x"), i.get("y") - 5),  # valós
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                if f_true[h] != f_pred[h]:
+                    cv2.putText(output, str('becs:'+ f_pred[h]), (i.get("x"), i.get("y") - 20),  # jósolt rossz
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+                else:
+                    cv2.putText(output, str('becs:'+f_pred[h]), (i.get("x"), i.get("y") - 20),  # jósolt jó
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                if f_true[h] != f_mpred[h]:
+                    cv2.putText(output, str('jav:'+f_mpred[h]), (i.get("x"), i.get("y") - 35),  # javított rossz
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+                else:
+                    cv2.putText(output, str('jav:'+f_mpred[h]), (i.get("x"), i.get("y") - 35),  # javított jó
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
-                    cv2.putText(output, i.get('ActorName'), (int(i.get("BoundingBox2D X1")), int(i.get("BoundingBox2D Y1")) - 50),  # lámpa id
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 1)
+                cv2.putText(output, i.get('track_id'), (i.get("x"), i.get("y") - 50),  # lámpa id
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 1)
 
-                h += 1
+            h += 1
 
-            l += 1
+        l += 1
+    import os
 
     cv2.imwrite("../estimated_3/image" + str(k) + ".tiff", output)
     cv2.waitKey(0)
     k += 1
 
-print('Állapotok száma (off, red, yellow, red-yellow, green):', numoff, numred, numyellow, numredyell, numgreen)
+#print(index)
+#print(f_true)
+#print(len(indexx), len(f_true))
+print(100 - (w * 100 / total), "%")
+print(100 - (fail * 100 / total), "%")

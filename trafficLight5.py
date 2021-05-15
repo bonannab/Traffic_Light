@@ -59,7 +59,7 @@ import yaml
 
 import random
 import numpy as np
-from IPython import get_ipython
+#from IPython import get_ipython
 #from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg  # for loading in images
@@ -1535,21 +1535,22 @@ for j in imgs:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
             cv2.putText(output, predicted_label, (i.get("x"), i.get("y") - 15),  # jósolt
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-            m = 0
-            while(PREDICTED[l][0][m] != 1):
-                m += 1
-            n = 0
-            while (PREDICTED[l][1][n] != 1):
-                n += 1
-            confusion_matrix[m][n] = confusion_matrix[m][n] + 1
         else:
             cv2.putText(output, true_label, (i.get("x"), i.get("y") - 5),  # lámpaállapot
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
             cv2.putText(output, predicted_label, (i.get("x"), i.get("y") - 15),  # lámpaállapot
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
+        m = 0
+        while (PREDICTED[l][0][m] != 1):
+            m += 1
+        n = 0
+        while (PREDICTED[l][1][n] != 1):
+            n += 1
+        confusion_matrix[m][n] = confusion_matrix[m][n] + 1
         l += 1
-    cv2.imwrite("../estimated/image"+str(k)+".tiff", output)
-    cv2.waitKey(0)
+    #cv2.imwrite("../estimated/image"+str(k)+".tiff", output)
+    #cv2.waitKey(0)
     k += 1
 print('off, red, yellow, red-yellow, green')
 for i in confusion_matrix:
@@ -1599,3 +1600,60 @@ else:
 # * (Optional) Aim for >95% classification accuracy.
 # * (Optional) Some lights are in the shape of arrows; further classify the lights as round or arrow-shaped.
 # * (Optional) Add another feature and aim for as close to 100% accuracy as you can get!'''
+
+
+
+
+
+
+
+'''SEMMMI 
+#graph_generator = GraphGenerator()
+#Graph = graph_generator.get_regular_graph(5, 2, seed=100)'''
+
+'''élek száma,
+csomópontok száma,
+grafikon sűrűsége,
+orákulum típus,
+fa elülső szélei,
+fa hátoldalai,
+fa levelek száma,
+fa gyökér azonosítója,
+csomópont látogatási sorrend,
+csomópont feltárási sorrend,
+portkódolás,
+útvonal gyökér,
+robot indító csomópont,
+port sorrend,
+feltárás hossza,
+elülső élek,
+hátsó élek,
+backtrack hossza,
+az útvonal sikeres volt '''
+
+'''valid_csv = [".csv"]
+data = []
+for path, subdirs, files in os.walk("."):
+    for f in files:
+        ext = os.path.splitext(f)[1]
+        if ext.lower() in valid_csv:
+            data.append(csv_helper.readcsv(f))
+
+i = 0
+siker = []
+num_of_edge = []
+last = []
+for file in data:
+    sikeres = 0
+    for line in file:
+        for column in line:
+            last = column
+        if last == 'True':
+            sikeres += 1
+    siker.append(sikeres)
+    num_of_edge.append(file[2][0])
+    print(file[2][0],',', sikeres)
+    i += 1'''
+
+'#print(data[0][0][4])
+#print(data[0][2][4])
